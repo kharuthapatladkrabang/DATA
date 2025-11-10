@@ -1,187 +1,68 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <base target="_top">
-  <title>Studio Configuration Data</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f7f6; }
-    h1 { color: #333; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
-    .container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-    .button-list { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-    .studio-btn { 
-      padding: 10px 15px; 
-      cursor: pointer; 
-      background-color: #007bff; 
-      color: white; 
-      border: none; 
-      border-radius: 5px; 
-      font-weight: bold;
-      transition: background-color 0.3s;
-    }
-    .studio-btn:hover { background-color: #0056b3; }
-    .loading { color: #666; font-style: italic; }
-    .data-output { margin-top: 20px; border: 1px solid #ddd; padding: 15px; border-radius: 5px; background-color: #f9f9f9; white-space: pre-wrap; word-wrap: break-word; }
-    .error { color: red; font-weight: bold; }
-  </style>
-</head>
-<body>
+// เปลี่ยนค่านี้เป็น URL ที่ Deploy แล้วของคุณโดยตรง
+const EXTERNAL_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzOpeTl3X_iwWxmkYD80vKaNhCLvKo2DVr5a4SaJusxQu-Rme6QwZiRRHa0qcMJpq4lKg/exec';
 
-  <div class="container">
-    <h1>📊 Studio Configuration Data Viewer</h1>
+/**
+ * ดึงข้อมูลรายการปุ่ม Studio
+ */
+async function getStudioListFromExternalAPI() {
+    const url = new URL(EXTERNAL_WEB_APP_URL);
+    url.searchParams.set('action', 'get_studio_list');
 
-    <h2>Studio Buttons List</h2>
-    <div id="button-list" class="button-list">
-      <span class="loading">Loading studio buttons...</span>
-    </div>
-    
-    <hr>
+    try {
+        const response = await fetch(url.toString(), {
+            method: 'POST' // Apps Script API ใช้ POST
+        });
 
-    <h2>Configuration Details (<span id="studio-name-display">Select a button</span>)</h2>
-    <div id="data-output" class="data-output">
-      Click on a Studio button above to view its configuration (Geofence, URL, etc.).
-    </div>
-    
-    <hr>
-    
-    <h2>Announcement Image/Button Configuration (H18, K18, L18)</h2>
-    <div id="announcement-output" class="data-output">
-      <span class="loading">Loading announcement config...</span>
-    </div>
-  </div>
+        if (!response.ok) {
+            throw new Error(`HTTP Status ${response.status}`);
+        }
 
-  <script>
-    // ดึง URL ของ Web App นี้โดยอัตโนมัติเมื่อ Deploy แล้ว
-    const WEB_APP_URL = '<?!= ScriptApp.getService().getUrl() ?>'; 
-
-    /**
-     * ดึงข้อมูลผ่าน Apps Script API
-     * @param {string} action ชื่อ action ที่จะเรียกใช้
-     * @param {Object} params พารามิเตอร์เพิ่มเติม (ถ้ามี)
-     * @returns {Promise<Object>} ข้อมูล JSON ที่ได้จาก API
-     */
-    async function fetchData(action, params = {}) {
-      const url = new URL(WEB_APP_URL);
-      url.searchParams.set('action', action);
-      for (const key in params) {
-        url.searchParams.set(key, params[key]);
-      }
-
-      const response = await fetch(url.toString(), {
-        method: 'POST' 
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.indexOf("application/json") !== -1) {
-        return response.json();
-      } else {
-        throw new Error("API response was not valid JSON.");
-      }
-    }
-
-    /**
-     * ดึงและแสดงรายการปุ่ม Studio
-     */
-    async function loadStudioButtons() {
-      const buttonListDiv = document.getElementById('button-list');
-      try {
-        const result = await fetchData('get_studio_list');
-        
-        buttonListDiv.innerHTML = '';
-        if (result.success && result.studioNames.length > 0) {
-          result.studioNames.forEach(name => {
-            const button = document.createElement('button');
-            button.className = 'studio-btn';
-            button.textContent = name;
-            button.onclick = () => loadGeofenceConfig(name);
-            buttonListDiv.appendChild(button);
-          });
+        const data = await response.json();
+        if (data.success) {
+            console.log("Studio List:", data.studioNames);
+            return data.studioNames;
         } else {
-          buttonListDiv.innerHTML = '<span class="error">Error: Could not fetch studio names or list is empty.</span>';
+            console.error("API Error:", data.message);
+            return [];
         }
-      } catch (error) {
-        console.error('Error loading studio buttons:', error);
-        buttonListDiv.innerHTML = `<span class="error">Failed to load buttons: ${error.message}</span>`;
-      }
+    } catch (error) {
+        console.error("Fetch Error:", error);
+        return [];
     }
+}
 
-    /**
-     * ดึงและแสดงข้อมูล Geofence Config ของ Studio ที่เลือก
-     * @param {string} studioName ชื่อปุ่ม Studio
-     */
-    async function loadGeofenceConfig(studioName) {
-      const outputDiv = document.getElementById('data-output');
-      const studioNameDisplay = document.getElementById('studio-name-display');
-      
-      outputDiv.innerHTML = `<span class="loading">Loading configuration for **${studioName}**...</span>`;
-      studioNameDisplay.textContent = studioName;
+/**
+ * ดึงข้อมูล Geofence Config สำหรับ Studio ที่ระบุ
+ * @param {string} studioName ชื่อ Studio ที่ต้องการ
+ */
+async function getGeofenceConfigFromExternalAPI(studioName) {
+    const url = new URL(EXTERNAL_WEB_APP_URL);
+    url.searchParams.set('action', 'get_geofence_config');
+    url.searchParams.set('studio', studioName);
 
-      try {
-        const result = await fetchData('get_geofence_config', { studio: studioName });
+    try {
+        const response = await fetch(url.toString(), {
+            method: 'POST'
+        });
 
-        if (result.success) {
-          // จัดรูปแบบผลลัพธ์ให้สวยงามและอ่านง่าย
-          let output = `**Success:** ${result.success}\n`;
-          output += `**Needs Geofence Check (C-column):** ${result.needsCheck}\n`;
-          output += `**Form URL (B-column):** ${result.formUrl}\n`;
-          output += `\n**Announcement Control:**\n`;
-          output += `  - Hide Close Button (D-column): ${result.announcementControl.hideCloseBtn}\n`;
-          output += `  - Countdown (Sec) (E-column): ${result.announcementControl.countdownSec}\n`;
+        if (!response.ok) {
+            throw new Error(`HTTP Status ${response.status}`);
+        }
 
-          if (result.needsCheck) {
-            output += `\n**Geofence Parameters (from 'รวมข้อมูล'):**\n`;
-            output += `  - Target Latitude (K1): ${result.targetLat}\n`;
-            output += `  - Target Longitude (K2): ${result.targetLon}\n`;
-            output += `  - Max Distance (Radius in km) (K3): ${result.maxDist} km\n`;
-          } else {
-            output += `\n**Geofence Parameters:** (Not Required for this Studio - C is 0 or empty)\n`;
-          }
-          
-          outputDiv.innerHTML = output.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
-
+        const data = await response.json();
+        if (data.success) {
+            console.log(`Config for ${studioName}:`, data);
+            return data;
         } else {
-          outputDiv.innerHTML = `<span class="error">Error fetching configuration for ${studioName}: ${result.message}</span>`;
+            console.error("API Error:", data.message);
+            return null;
         }
-      } catch (error) {
-        console.error('Error loading Geofence config:', error);
-        outputDiv.innerHTML = `<span class="error">Failed to load config: ${error.message}</span>`;
-      }
+    } catch (error) {
+        console.error("Fetch Error:", error);
+        return null;
     }
-    
-    /**
-     * ดึงและแสดงข้อมูล Announcement Config
-     */
-    async function loadAnnouncementConfig() {
-        const outputDiv = document.getElementById('announcement-output');
-        try {
-            const result = await fetchData('get_announcement_image');
-            
-            if (result.success) {
-                let output = `**Success:** ${result.success}\n`;
-                output += `**Image URL (H18):** ${result.imageUrl ? result.imageUrl : '(Empty)'}\n`;
-                output += `**Button Text (K18):** ${result.buttonText ? result.buttonText : '(Empty)'}\n`;
-                output += `**Button URL (L18):** ${result.buttonUrl ? result.buttonUrl : '(Empty)'}\n`;
-                
-                outputDiv.innerHTML = output.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
-            } else {
-                outputDiv.innerHTML = `<span class="error">Error fetching announcement config: ${result.message}</span>`;
-            }
+}
 
-        } catch (error) {
-            console.error('Error loading announcement config:', error);
-            outputDiv.innerHTML = `<span class="error">Failed to load announcement config: ${error.message}</span>`;
-        }
-    }
-
-    // เริ่มต้นการทำงานเมื่อหน้าเว็บโหลดเสร็จ
-    window.onload = () => {
-        loadStudioButtons();
-        loadAnnouncementConfig();
-    };
-  </script>
-
-</body>
-</html>
+// ตัวอย่างการใช้งาน:
+// getStudioListFromExternalAPI();
+// getGeofenceConfigFromExternalAPI('Studio A');
